@@ -1,0 +1,602 @@
+{
+  "name": "Invoice Intake Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Invoice Intake",
+        "formDescription": "Upload a supplier invoice (PDF) for validation",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Invoice PDF",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5cdf3c37-ecb0-4d97-a2c8-af6c627abe1c",
+      "name": "On form submission",
+      "webhookId": "2061b080-ec8f-47ef-b49c-a166d57d0e21"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "Invoice_PDF",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "35245f63-10ba-472e-a906-5997112f63f0",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=     Invoice text:\n     {{ $json.text }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an accounts-payable assistant. Extract the invoice fields exactly as printed. Extracted fields (vendor_name, invoice_number, invoice_date, vat_id, iban, amounts) must come ONLY from the invoice text. Never fill them from tool results. Tool results are used only to set vendor_known, iban_matches_master and duplicate_found. If the invoice text has no VAT ID, vat_id must be an empty string, even if the vendor master has one. If a text field is missing, return an empty string; if an amount is missing, return 0. Never guess. Convert German number format to plain numbers (1.234,56 → 1234.56). Return invoice_date in ISO format YYYY-MM-DD (e.g. 05.09.2026 → 2026-09-05).\nThen decide which checks are possible:\n– Call lookup_vendor with the vendor name exactly as printed. If no record is found, set vendor_known=false and iban_matches_master=false, and do not attempt an IBAN comparison. If found, compare the IBAN on the invoice with the master IBAN and set iban_matches_master.\n– Call check_duplicate only if an invoice number was extracted; otherwise set duplicate_found=false and say why in agent_notes.\nDo not perform arithmetic validation. Summarize what you checked and why in agent_notes (one or two sentences). Return only the required JSON.",
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "f2864b1e-38b9-442b-a4c2-4a0d078bcdb7",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        272,
+        208
+      ],
+      "id": "4a8d44dc-2ed1-42c6-bcab-7bb319e7559f",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "lFrNKr4THJ9FfalA",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"vendor_name\":\"\",\"invoice_number\":\"\",\"invoice_date\":\"\",\"vat_id\":\"\",\"iban\":\"\",\"currency\":\"EUR\",\"net_amount\":0,\"vat_rate\":19,\"vat_amount\":0,\"gross_amount\":0,\"vendor_known\":true,\"iban_matches_master\":true,\"duplicate_found\":false,\"agent_notes\":\"\"}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        192
+      ],
+      "id": "e3b0e991-7e30-4c41-93f1-34883033fa94",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get the vendor master record (VAT ID, IBAN) by exact vendor name",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "AP8QzGHKSsyvHntc",
+          "mode": "list",
+          "cachedResultName": "vendor_master",
+          "cachedResultUrl": "/projects/JJwwuazz3QNpZRE6/datatables/AP8QzGHKSsyvHntc"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "=vendor_name",
+              "keyValue": "={{ $fromAI('vendor_name', 'Vendor name exactly as printed on the invoice', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        368
+      ],
+      "id": "ee93d861-5e93-4edc-8e68-67a3f1f56538",
+      "name": "lookup_vendor"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Find existing invoice register entries with the same vendor name and invoice number",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "QhtwU67aa1oJNYW8",
+          "mode": "list",
+          "cachedResultName": "invoice_register",
+          "cachedResultUrl": "/projects/JJwwuazz3QNpZRE6/datatables/QhtwU67aa1oJNYW8"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vendor_name",
+              "keyValue": "={{ $fromAI('vendor_name', 'Vendor name exactly as printed on the invoice', 'string') }}"
+            },
+            {
+              "keyName": "invoice_number",
+              "keyValue": "={{ $fromAI('invoice_number', 'Invoice number exactly as printed on the invoice', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTableTool",
+      "typeVersion": 1.1,
+      "position": [
+        656,
+        368
+      ],
+      "id": "107ddf20-e509-4105-ab5c-a588f8ab83e0",
+      "name": "check_duplicate"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "QhtwU67aa1oJNYW8",
+          "mode": "list",
+          "cachedResultName": "invoice_register",
+          "cachedResultUrl": "/projects/JJwwuazz3QNpZRE6/datatables/QhtwU67aa1oJNYW8"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "vendor_name": "={{ $json.vendor_name }}",
+            "invoice_number": "={{ $json.invoice_number }}",
+            "invoice_date": "={{ $json.invoice_date }}",
+            "net_amount": "={{ $json.net_amount }}",
+            "vat_amount": "={{ $json.vat_amount }}",
+            "gross_amount": "={{ $json.gross_amount }}",
+            "status": "={{ $json.status }}",
+            "issues": "={{ $json.issues }}",
+            "agent_trace": "={{ $json.agent_trace }}",
+            "processed_at": "={{ $json.processed_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "vendor_name",
+              "displayName": "vendor_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "net_amount",
+              "displayName": "net_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "vat_amount",
+              "displayName": "vat_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "gross_amount",
+              "displayName": "gross_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "issues",
+              "displayName": "issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "agent_trace",
+              "displayName": "agent_trace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "1402bb0a-3d74-4659-842d-f01ec07c3d1c",
+      "name": "invoice_register"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "Ready",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "e895017d-fc3c-4d9d-821b-76d3beb3343e"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ready"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b472aa8e-b335-49ed-925e-0c0b6e88afbe",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "Exception",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Exception"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0e8b6308-a75e-4c03-86ba-750ff881d9ed",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "Critical",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Critical"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "668f8210-70d6-43c8-b169-3e94eb233dbf",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst inv = data.output;\nconst steps = data.intermediateSteps || [];\nconst issues = [];\nlet critical = false;\n\n// Grounding check: IDs must literally appear in the invoice text\nconst src = ($('Extract from File').first().json.text || '').replace(/\\s/g, '');\nfor (const f of ['vat_id', 'iban', 'invoice_number']) {\n  if (inv[f] && !src.includes(String(inv[f]).replace(/\\s/g, ''))) {\n    issues.push(`${f} \"${inv[f]}\" not found in invoice text – discarded`);\n    inv[f] = '';\n  }\n}\n// Normalize German dates to ISO; flag anything unrecognized\nconst d = String(inv.invoice_date || '').match(/^(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})$/);\nif (d) inv.invoice_date = `${d[3]}-${d[2].padStart(2, '0')}-${d[1].padStart(2, '0')}`;\nif (inv.invoice_date && !/^\\d{4}-\\d{2}-\\d{2}$/.test(inv.invoice_date)) issues.push(`Unrecognized date format \"${inv.invoice_date}\"`);\n\nfor (const f of ['vendor_name','invoice_number','invoice_date','vat_id'])\n  if (!inv[f]) issues.push(`Missing ${f}`);\nif (!(inv.net_amount > 0) || !(inv.gross_amount > 0)) issues.push('Missing or invalid amounts');\nif (Math.abs(inv.net_amount + inv.vat_amount - inv.gross_amount) > 0.01) issues.push('Net + VAT ≠ Gross');\nif (![0, 7, 19].includes(inv.vat_rate)) issues.push(`Unusual VAT rate ${inv.vat_rate}%`);\nelse if (Math.abs(Math.round(inv.net_amount * inv.vat_rate) / 100 - inv.vat_amount) > 0.02) issues.push('VAT ≠ net × rate');\nif (!inv.vendor_known) issues.push('Unknown vendor – IBAN not verifiable');\nif (inv.vendor_known && (!inv.iban || !inv.iban_matches_master)) { issues.push('IBAN missing or differs from vendor master – possible fraud'); critical = true; }\nif (inv.duplicate_found) issues.push('Possible duplicate invoice');\n\nconst agent_trace = steps.length\n  ? steps.map((s, i) => {\n      const obs = String(s.observation ?? '').trim();\n      const found = obs && obs !== '\"\"' && obs !== '[]';\n      return `${i + 1}. Agent called ${s.action.tool} with ${JSON.stringify(s.action.toolInput)} → ${found ? 'record found' : 'no match'}`;\n    }).join('\\n')\n  : 'Agent called no tools';\n\nconst status = critical ? 'Critical – payment block' : issues.length ? 'Exception' : 'Ready to post';\nreturn [{ json: { ...inv, status, issues: issues.join('; '), agent_trace: agent_trace + '\\nAgent notes: ' + inv.agent_notes, processed_at: new Date().toISOString() } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        0
+      ],
+      "id": "9a8326af-7fd8-485f-a0d1-021d3a5fced5",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": " Ready to post",
+        "completionMessage": "=Invoice {{ $('Code').item.json.invoice_number }} from {{ $('Code').item.json.vendor_name }} passed all checks. Agent trace: {{ $('Code').item.json.agent_trace }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1488,
+        -112
+      ],
+      "id": "9cdc8c11-c1f1-4194-aeb2-f6d53628aaba",
+      "name": "Ready Screen",
+      "webhookId": "85352d48-e564-459b-bd52-ef9961f573ca"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Exception – needs review",
+        "completionMessage": "=Issues: {{ $('Code').item.json.issues }} Agent trace: {{ $('Code').item.json.agent_trace }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "0a82c2de-7ff8-4cbd-9747-0a995bb60815",
+      "name": "Exception Screen",
+      "webhookId": "d895a7b7-04ec-4ed1-b681-43234e5a5237"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Critical – payment block",
+        "completionMessage": "=Issues: {{ $('Code').item.json.issues }} Agent trace: {{ $('Code').item.json.agent_trace }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        1488,
+        112
+      ],
+      "id": "896662f9-7af3-4e3a-a61b-20ffe2e95323",
+      "name": "Critical Screen",
+      "webhookId": "24a48f94-70e1-4c3c-9c53-e6c46bf36834"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "lookup_vendor": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_duplicate": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "invoice_register": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Ready Screen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Exception Screen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Critical Screen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "invoice_register",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Europe/Berlin",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "e7a1fd3c-848f-4bea-9906-b186eb6836bb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bb02bc3d2d57b94e20fa77acde7cb1c458605564de0566b865735638112b86f6"
+  },
+  "nodeGroups": [],
+  "id": "q8JjdV1pwzdA6bMJ",
+  "tags": []
+}
