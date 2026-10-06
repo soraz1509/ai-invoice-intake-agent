@@ -2,6 +2,8 @@
 
 Built by Sora Zhang, SAP FI/CO consultant, to explore how AI agents can support accounts-payable controls.
 
+LinkedIn: [www.linkedin.com/in/shuyue-sora-z-31a284127](https://www.linkedin.com/in/shuyue-sora-z-31a284127)
+
 Demo video: (link coming)
 
 An n8n workflow that takes a supplier invoice as a PDF, lets a Gemini-based agent read it and check it against a vendor master and an invoice register, validates the result with deterministic code, and sorts it into Ready to post, Exception or Critical – payment block. Every run is written to a register with the status, the issues found and a trace of the agent's tool calls. The agent only classifies; it never posts or pays. It is a demo and runs on synthetic data only.
@@ -84,7 +86,7 @@ Prerequisites: Docker, Python 3, a Google AI Studio API key. Requires an n8n ver
    ```
    Open http://localhost:5678.
 2. **Import the workflow:** create a new workflow and import [workflow/invoice-intake-agent.json](workflow/invoice-intake-agent.json) (menu → Import from file).
-3. **Create the Gemini credential:** add a "Google Gemini(PaLM) Api" credential with your API key and select it in the "Google Gemini Chat Model" node. The workflow uses `models/gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite).
+3. **Create the Gemini credential:** add a "Google Gemini(PaLM) Api" credential with your API key and select it in the "Google Gemini Chat Model" node. The workflow uses `models/gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) (or any current Gemini Flash model).
 4. **Create two Data Tables** and select them in the nodes that reference them (`lookup_vendor`, `check_duplicate`, `invoice_register`):
    - `vendor_master`: `vendor_name` (string), `vat_id` (string), `iban` (string). Fill it from [test-data/vendor_master.csv](test-data/vendor_master.csv).
    - `invoice_register`: `vendor_name`, `invoice_number`, `invoice_date` (string); `net_amount`, `vat_amount`, `gross_amount` (number); `status`, `issues`, `agent_trace`, `processed_at` (string). Leave it empty.
@@ -113,5 +115,5 @@ The test data generator, the verification script and this README were drafted wi
 ## Tech stack
 
 - n8n (self-hosted via Docker): Form Trigger, Extract from File, AI Agent, Data Tables, Code, Switch
-- Google Gemini (`gemini-3.5-flash-lite`) via the n8n Google Gemini chat model node
+- Google Gemini (`gemini-3.5-flash-lite`, or any current Gemini Flash model) via the n8n Google Gemini chat model node
 - Python 3 with reportlab (test PDFs) and pypdf (verification)
